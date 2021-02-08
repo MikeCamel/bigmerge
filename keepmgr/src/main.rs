@@ -4,10 +4,11 @@
 
 use koine::{Backend, Contract};
 
+use config::*;
 use serde::Serialize;
 use structopt::StructOpt;
-use tokio::net::{TcpListener, UnixListener};
-use tokio_stream::wrappers::{TcpListenerStream, UnixListenerStream};
+use tokio::net::{TcpListener};
+use tokio_stream::wrappers::TcpListenerStream;
 use uuid::Uuid;
 use warp::http::header::CONTENT_TYPE;
 use warp::http::{Response, StatusCode};
@@ -49,6 +50,12 @@ impl ContractExt for Contract {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ContractMgr {
+    pub address: String,
+    pub port: u16,
+}
+
 #[derive(Debug)]
 enum Listener {
     Unix(std::os::unix::net::UnixListener),
@@ -80,6 +87,10 @@ impl std::str::FromStr for Listener {
     }
 }
 
+
+#[derive(StructOpt)]
+struct Run {}
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "keepmgr", about = "Manages keeps.")]
 struct Options {
@@ -104,23 +115,12 @@ where
     I::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     // Client is requesting details of all contracts.
+
     let get_contracts = warp::path!("contracts")
         .and(warp::filters::method::get())
-        .map(|| {
-            // TODO: fetch contracts from the contractmgr
-            let contracts: Vec<Contract> = CONTRACTS
-                .iter()
-                .cloned()
-                .filter(Contract::is_supported)
-                .collect();
-
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(CONTENT_TYPE, "application/cbor")
-                .body(cborize(&contracts))
-                .unwrap()
-        });
-
+        //.and(with_contactmgr(contractmgr))
+        .and_then(list_contracts);
+    
     // Client is requesting details of a single contract.
     let get_contracts_uuid = warp::path!("contracts" / Uuid)
         .and(warp::filters::method::get())
@@ -149,17 +149,38 @@ where
 
 #[tokio::main]
 async fn main() -> tokio::io::Result<()> {
-    match Options::from_args().listen {
-        Listener::Unix(socket) => {
-            let listen = UnixListener::from_std(socket)?;
-            let stream = UnixListenerStream::new(listen);
-            serve(stream).await
-        }
+    let mut settings = config::Config::default();
+    settings
+        .merge(File::with_name("Keepmgr_config"))
+        .unwrap()
+        .merge(Environment::with_prefix("keepmgr"))
+        .unwrap();
 
-        Listener::Tcp(socket) => {
-            let listen = TcpListener::from_std(socket)?;
+    let listen_type: String = settings.get("keepmgr_type").unwrap();
+    match listen_type.as_ref() {
+        "tcp" => {
+            let my_address: String = settings.get("keepmgr_address").unwrap();
+            let my_port: u16 = settings.get("keepmgr_port").unwrap();
+            println!("Address = {}, port = {}", &my_address, &my_port);
+            let full_address = format!("{}:{}", my_address, my_port);
+            println!("Binding to {}", full_address);
+            let stdlisten = std::net::TcpListener::bind(full_address).unwrap();
+            let listen = TcpListener::from_std(stdlisten).unwrap();
             let stream = TcpListenerStream::new(listen);
             serve(stream).await
         }
+        _ => {
+            panic!("Unimplemented");
+        }
     }
+
+}
+
+pub async fn list_contracts(
+ //       available_contracts: ContractList,
+    ) -> Result<impl warp::Reply, warp::Rejection> {
+    println!("Calling list_contracts");
+    let conl: Vec<Contract> = CONTRACTS.to_vec();
+
+    Ok(cborize(&conl))
 }

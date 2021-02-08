@@ -1,0 +1,8 @@
+keepmgr_type = "tcp"
+keepmgr_address = "192.168.1.203"
+keepmgr_port = 3030
+keepldr_path_root = "/tmp/enarx-keep-"
+contractmgr_address = "127.0.0.1"
+contractmgr_port = 3020
+#systemd-escape'd version of keepldr_path_root
+#keepldr_path_root = "-tmp-enarx\\x2dkeepldr\\x2d"

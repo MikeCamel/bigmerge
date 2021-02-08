@@ -33,6 +33,8 @@ impl std::str::FromStr for Listener {
         use std::os::unix::io::{FromRawFd, RawFd};
         use std::os::unix::net::UnixListener as Unix;
 
+        //TODO - allow hostnames, not just IP
+        
         if let Ok(fd) = RawFd::from_str(s) {
             return match getsockname(fd).map_err(|_| ErrorKind::InvalidInput)? {
                 SockAddr::Unix(..) => Ok(Listener::Unix(unsafe { Unix::from_raw_fd(fd) })),
